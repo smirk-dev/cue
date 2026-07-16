@@ -1,4 +1,4 @@
-/* cue — glassmorphism overlay. Tokens reconstructed from the Cluely screenshot. */
+/* Socrates — glassmorphism overlay. */
 
 :root {
   --accent: #3C83F5;
@@ -81,6 +81,12 @@ html, body {
 .tb-stop:hover { background: rgba(255,255,255,0.08); }
 .tb-stop.active { color: #ff6b6b; }
 
+/* Learn / Teach role toggle — swaps the whole tutoring prompt set */
+.tb-role { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--r-pill); background: rgba(255,255,255,0.06); }
+.tb-role button { padding: 4px 12px !important; border-radius: var(--r-pill); font-size: 12.5px; font-weight: 600; color: rgba(255,255,255,0.55); }
+.tb-role button:hover { color: rgba(255,255,255,0.85); }
+.tb-role button.on { color: #fff; background: var(--accent); box-shadow: 0 1px 6px rgba(60,131,245,0.45); }
+
 /* ============================ Panel ============================ */
 #panel-wrap { position: relative; margin-top: 12px; width: min(624px, 94vw); }
 button:focus { outline: none; }
@@ -141,10 +147,10 @@ button:focus { outline: none; }
 .ai-text p code { background: rgba(255,255,255,0.10); padding: 1px 5px; border-radius: 5px; }
 .ai-caret { display:inline-block; width:7px; height:1.05em; vertical-align:-2px; background: var(--accent); border-radius:1px; animation: blink 1s step-end infinite; margin-left: 2px; }
 .status-line { color: var(--tx-mut); font-size: 13px; margin: 10px 0 2px; }
-#cue-status { display: none; margin: 8px 0 2px; padding: 8px 12px; border-radius: 10px;
+#status-toast { display: none; margin: 8px 0 2px; padding: 8px 12px; border-radius: 10px;
   background: rgba(60,131,245,0.12); border: 1px solid rgba(60,131,245,0.30);
   color: #bcd4fb; font-size: 12.5px; line-height: 1.45; -webkit-user-select: text; user-select: text; }
-#cue-status.show { display: block; animation: fadeUp 200ms ease both; }
+#status-toast.show { display: block; animation: fadeUp 200ms ease both; }
 
 /* ============================ Action row ============================ */
 #action-row {

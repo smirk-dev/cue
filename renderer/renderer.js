@@ -1,16 +1,16 @@
-/* cue renderer — UI state, mic capture, IPC, streaming render. */
+/* Socrates renderer — UI state, mic capture, IPC, streaming render. */
 (function () {
   const { icon } = window.ICONS;
-  const cue = window.cue; // exposed by preload
+  const sx = window.socrates; // exposed by preload
   const $ = (s) => document.querySelector(s);
 
   // ---- paint icons -------------------------------------------------------
   $('#logo-btn').innerHTML = icon('logo', { size: 18 });
   $('.tb-hide .chev').innerHTML = icon('chevron-down', { size: 14 });
   $('#stop-btn').innerHTML = icon('stop-square', { size: 15 });
-  document.querySelector('.act[data-mode="assist"] .ic').innerHTML = icon('sparkles', { size: 16 });
-  document.querySelector('.act[data-mode="say"] .ic').innerHTML = icon('wand-sparkles', { size: 16 });
-  document.querySelector('.act[data-mode="followup"] .ic').innerHTML = icon('message-circle', { size: 16 });
+  document.querySelector('.act[data-mode="explain"] .ic').innerHTML = icon('lightbulb', { size: 16 });
+  document.querySelector('.act[data-mode="hint"] .ic').innerHTML = icon('circle-help', { size: 16 });
+  document.querySelector('.act[data-mode="check"] .ic').innerHTML = icon('list-checks', { size: 16 });
   document.querySelector('.act[data-mode="recap"] .ic').innerHTML = icon('refresh-cw', { size: 16 });
   $('#smart-toggle .ic').innerHTML = icon('zap', { size: 14 });
   $('#more-btn').innerHTML = icon('more-horizontal', { size: 18 });
@@ -23,6 +23,13 @@
   let caretEl = null;
 
   const messages = $('#messages');
+
+  // Action-button labels differ by role — the same mode reads differently to a learner
+  // and to a teacher. (The prompt sets differ too; that lives in src/prompts.js.)
+  const MODE_LABELS = {
+    learning: { explain: 'Explain', hint: 'Nudge me', check: 'Check understanding', recap: 'Recap' },
+    teaching: { explain: 'Explain better', hint: 'A question to ask', check: 'Are they following?', recap: 'What did I cover?' }
+  };
 
   function esc(s) { return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
@@ -91,7 +98,7 @@
   function runMode(mode, text) {
     if (busy) return;
     setBusy(true);
-    cue.ask({ mode, text: text || '' });
+    sx.ask({ mode, text: text || '' });
   }
 
   document.querySelectorAll('.act').forEach((btn) => {
@@ -114,22 +121,39 @@
 
   function send() {
     const text = input.value.trim();
-    if (!text) { runMode('assist', ''); return; }
+    if (!text) { runMode('explain', ''); return; }
     input.value = ''; syncPlaceholder();
     runMode('ask', text);
   }
   $('#send-btn').addEventListener('click', send);
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.metaKey) { e.preventDefault(); send(); }
-    if (e.key === 'Enter' && e.metaKey) { e.preventDefault(); runMode('assist', ''); }
+    if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) { e.preventDefault(); send(); }
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); runMode('explain', ''); }
   });
+
+  // ---- role toggle (Learn / Teach) ---------------------------------------
+  const roleSeg = $('#role-seg');
+  function applyRole(role) {
+    const labels = MODE_LABELS[role] || MODE_LABELS.learning;
+    Object.keys(labels).forEach((mode) => {
+      const el = document.querySelector('.act[data-mode="' + mode + '"] .lbl');
+      if (el) el.textContent = labels[mode];
+    });
+    roleSeg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.role === role));
+  }
+  roleSeg.querySelectorAll('button').forEach((b) => b.addEventListener('click', async () => {
+    if (settings.role === b.dataset.role) return;
+    settings.role = b.dataset.role;
+    applyRole(settings.role);
+    await sx.settingsSet({ role: settings.role });
+  }));
 
   // Smart toggle
   const smartBtn = $('#smart-toggle');
   smartBtn.addEventListener('click', async () => {
     settings.smart = !settings.smart;
     smartBtn.classList.toggle('on', settings.smart);
-    await cue.settingsSet({ smart: settings.smart });
+    await sx.settingsSet({ smart: settings.smart });
   });
 
   // Hide / collapse
@@ -144,7 +168,7 @@
   $('#stop-btn').addEventListener('click', () => {
     const turningOn = !$('#stop-btn').classList.contains('active');
     if (turningOn) startSystemAudio();
-    cue.captureToggle();
+    sx.captureToggle();
   });
 
   // ---- capture: mic (renderer side) --------------------------------------
@@ -162,10 +186,11 @@
         const f = e.inputBuffer.getChannelData(0);
         const out = new Int16Array(f.length);
         for (let i = 0; i < f.length; i++) { const s = Math.max(-1, Math.min(1, f[i])); out[i] = s < 0 ? s * 0x8000 : s * 0x7fff; }
-        cue.micPcm(out.buffer);
+        sx.micPcm(out.buffer);
       };
     } catch (err) {
-      cue.log('mic error: ' + (err && err.message));
+      sx.log('mic error: ' + (err && err.message));
+      showStatus('Microphone blocked. Allow it in Windows Settings → Privacy & security → Microphone, then toggle listening again.');
     }
   }
   function stopMic() {
@@ -175,7 +200,7 @@
     if (micStream) { micStream.getTracks().forEach((t) => t.stop()); micStream = null; }
   }
 
-  // ---- capture: system/meeting audio (getDisplayMedia loopback, in cue's process) ----
+  // ---- capture: system/meeting audio (getDisplayMedia loopback, in Socrates' process) ----
   let sysStream = null, sysCtx = null, sysNode = null, sysProc = null;
   async function startSystemAudio() {
     if (sysStream) return;
@@ -183,7 +208,7 @@
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
       stream.getVideoTracks().forEach((t) => t.stop()); // we only want the audio
       const tracks = stream.getAudioTracks();
-      if (!tracks.length) { cue.log('system audio: no loopback track (macOS loopback unsupported here)'); stream.getTracks().forEach((t) => t.stop()); return; }
+      if (!tracks.length) { sx.log('system audio: no loopback track available'); stream.getTracks().forEach((t) => t.stop()); return; }
       sysStream = stream;
       sysCtx = new AudioContext({ sampleRate: 16000 });
       sysNode = sysCtx.createMediaStreamSource(new MediaStream(tracks));
@@ -194,11 +219,11 @@
         const f = e.inputBuffer.getChannelData(0);
         const out = new Int16Array(f.length);
         for (let i = 0; i < f.length; i++) { const s = Math.max(-1, Math.min(1, f[i])); out[i] = s < 0 ? s * 0x8000 : s * 0x7fff; }
-        cue.systemPcm(out.buffer);
+        sx.systemPcm(out.buffer);
       };
-      cue.log('system audio: capturing loopback');
+      sx.log('system audio: capturing loopback');
     } catch (err) {
-      cue.log('system audio error: ' + (err && err.message));
+      sx.log('system audio error: ' + (err && err.message));
     }
   }
   function stopSystemAudio() {
@@ -209,29 +234,29 @@
   }
 
   // ---- events from main --------------------------------------------------
-  cue.on('capture:state', ({ active }) => {
+  sx.on('capture:state', ({ active }) => {
     $('#live-dot').classList.toggle('off', !active);
     $('#stop-btn').classList.toggle('active', active);
     if (active) { startMic(); startSystemAudio(); } else { stopMic(); stopSystemAudio(); }
   });
-  cue.on('llm:start', ({ userBubble, small }) => {
+  sx.on('llm:start', ({ userBubble, small }) => {
     clearMessages();
     if (userBubble) addUserBubble(userBubble);
     startAi(!!small);
     setBusy(true);
   });
-  cue.on('llm:token', ({ text }) => appendToken(text));
-  cue.on('llm:done', () => { finalizeAi(); setBusy(false); });
-  cue.on('llm:error', ({ message }) => {
+  sx.on('llm:token', ({ text }) => appendToken(text));
+  sx.on('llm:done', () => { finalizeAi(); setBusy(false); });
+  sx.on('llm:error', ({ message }) => {
     if (!aiEl) startAi(true);
     aiEl.dataset.raw = message; finalizeAi(); setBusy(false);
   });
   let statusTimer = null;
   function showStatus(message) {
-    let el = document.getElementById('cue-status');
+    let el = document.getElementById('status-toast');
     if (!el) {
       el = document.createElement('div');
-      el.id = 'cue-status';
+      el.id = 'status-toast';
       const panel = document.getElementById('panel');
       panel.insertBefore(el, document.getElementById('action-row'));
     }
@@ -240,7 +265,7 @@
     clearTimeout(statusTimer);
     statusTimer = setTimeout(() => el.classList.remove('show'), 11000);
   }
-  cue.on('status', ({ message }) => { cue.log('[status] ' + message); showStatus(message); });
+  sx.on('status', ({ message }) => { sx.log('[status] ' + message); showStatus(message); });
 
   // ---- settings ----------------------------------------------------------
   const scrim = $('#settings-scrim');
@@ -279,28 +304,31 @@
     if (!settings.models[settings.provider]) settings.models[settings.provider] = {};
     settings.models[settings.provider].fast = $('#model-fast').value.trim();
     settings.models[settings.provider].smart = $('#model-smart').value.trim();
-    await cue.settingsSet(settings);
+    await sx.settingsSet(settings);
   }
 
-  // ---- example conversation (matches the reference screenshot) ------------
+  // ---- example (shown on first paint, before any real session) ------------
   function showExample() {
     clearMessages();
-    addUserBubble('What should I say?');
+    const learner = (settings && settings.role) !== 'teaching';
+    addUserBubble(learner ? 'Explain' : 'Explain better');
     const ai = document.createElement('div');
     ai.className = 'ai-text';
-    ai.textContent = '“A discounted cash flow model values a company by projecting future free cash flows and discounting them to present value using the weighted average cost of capital.”';
+    ai.textContent = learner
+      ? 'Think of recursion as a function that solves a big problem by asking a smaller copy of itself for help, until the problem is small enough to answer outright. What would the smallest version of your problem look like?'
+      : 'Try grounding recursion in one concrete base case first, then show how each call shrinks the input toward it. A learner usually stumbles on trusting that the smaller call “just works” — name that leap out loud.';
     messages.appendChild(ai);
   }
 
   // ---- global keys -------------------------------------------------------
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !scrim.classList.contains('hidden')) closeSettings();
-    if (e.metaKey && e.key === ',') { e.preventDefault(); openSettings(); }
+    if ((e.metaKey || e.ctrlKey) && e.key === ',') { e.preventDefault(); openSettings(); }
   });
 
   // ---- click-through: only the UI blocks the mouse; empty gaps pass to your screen ----
   let ignoring = null;
-  function setIgnore(v) { if (v !== ignoring) { ignoring = v; cue.setIgnoreMouse(v); } }
+  function setIgnore(v) { if (v !== ignoring) { ignoring = v; sx.setIgnoreMouse(v); } }
   document.addEventListener('mousemove', (e) => {
     const el = document.elementFromPoint(e.clientX, e.clientY);
     const overUI = !!(el && el.closest && el.closest('#toolbar, #panel-wrap, #settings-scrim, #onboard-scrim'));
@@ -308,38 +336,35 @@
   });
   setIgnore(true); // start fully click-through; hovering the panel re-enables it
 
-  // ---- onboarding / first-run tutorial -----------------------------------
+  // ---- onboarding / first-run tutorial (Windows) -------------------------
   const obScrim = $('#onboard-scrim');
   const OB_STEPS = [
     {
-      icon: '👋',
-      title: 'Welcome to cue',
-      body: 'cue is a private AI copilot that floats over your screen. It can <strong>see your screen</strong>, <strong>hear your meetings</strong>, and help you answer questions or solve coding problems — while staying hidden from most screen shares.<br><br>This quick guide gets you running in about a minute.'
-    },
-    {
-      icon: '🔐',
-      title: 'Allow cue to see & hear',
-      body: 'cue needs two macOS permissions. Click each button, turn <strong>cue</strong> ON in the window that opens, then come back here.<ul><li><strong>Microphone</strong> — to hear you</li><li><strong>Screen Recording</strong> — to see your screen and hear meeting audio</li></ul>',
-      buttons: [
-        { label: 'Open Microphone settings', action: () => cue.openPane('x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone') },
-        { label: 'Open Screen Recording settings', action: () => cue.openPane('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture') }
-      ]
+      icon: '📚',
+      title: 'Welcome to Socrates',
+      body: 'Socrates is a private copilot that floats over your screen and helps on both sides of a session — the person <strong>explaining</strong> and the person <strong>trying to understand</strong>. It can <strong>see your screen</strong> and <strong>hear your session</strong>, and it stays hidden from most screen shares.<br><br>Flip <strong>Learn / Teach</strong> in the top bar to switch which side it helps. This quick guide takes about a minute.'
     },
     {
       icon: '🔑',
       title: 'Connect an AI provider',
-      body: 'cue uses <strong>your own</strong> API key — pick <span class="hl">OpenAI</span>, <span class="hl">Anthropic</span>, or <span class="hl">Google Gemini</span>. Get a key from your provider, then paste it into cue\'s Settings.<br><br><strong>Tip:</strong> the listening features need speech-to-text access (an OpenAI key with Whisper, or a Gemini key). A chat-only key still powers screen &amp; coding help.',
-      buttons: [{ label: 'Open cue Settings', action: () => { finishOnboard(); openSettings(); } }]
+      body: 'Socrates uses <strong>your own</strong> API key — pick <span class="hl">OpenAI</span>, <span class="hl">Anthropic</span>, or <span class="hl">Google Gemini</span>. Get a key from your provider, then paste it into Settings.<br><br><strong>Tip:</strong> the listening features need speech-to-text (an OpenAI key with Whisper, or a Gemini key). A chat-only key still powers the screen features.',
+      buttons: [{ label: 'Open Settings', action: () => { finishOnboard(); openSettings(); } }]
+    },
+    {
+      icon: '🎙️',
+      title: 'Let Socrates hear the session',
+      body: 'Windows doesn\'t ask for screen permission — screenshots and system (meeting) audio just work. The <strong>only</strong> gate is the microphone, so Socrates can hear you.<br><br>If listening does nothing, turn the mic on: <span class="hl">Settings → Privacy &amp; security → Microphone</span>, and make sure desktop apps are allowed.',
+      buttons: [{ label: 'Open Microphone settings', action: () => sx.openPane('ms-settings:privacy-microphone') }]
     },
     {
       icon: '🫥',
-      title: 'Stay hidden in Zoom',
-      body: 'cue is hidden from most screen shares automatically (Google Meet, Teams, QuickTime — nothing to do). <strong>Zoom needs one setting:</strong><br><br>Zoom → <span class="hl">Settings</span> → <span class="hl">Share Screen</span> → <span class="hl">Advanced</span> → <strong>Screen capture mode</strong> → choose <strong>“Advanced capture with window filtering.”</strong><br><br>Avoid “<strong>without</strong> window filtering” — that mode reveals cue.'
+      title: 'Hidden from screen shares — best-effort',
+      body: 'Socrates asks Windows to exclude its window from screen capture, so it stays out of most shares (Zoom, Teams, Meet, OBS) automatically. <strong>This is best-effort, not guaranteed.</strong><br><br>It hides the <strong>pixels</strong> from capture — it does <strong>not</strong> hide the running process or the window from the system\'s window list, and a phone camera always sees the screen. Don\'t rely on it where being seen would matter.'
     },
     {
       icon: '✨',
-      title: 'You’re all set',
-      body: 'How to use cue:<ul><li><span class="kbd">⌘</span> <span class="kbd">↵</span> — <strong>Assist</strong> with whatever\'s on screen or being said</li><li><span class="kbd">⌘</span> <span class="kbd">H</span> — solve a coding problem on screen</li><li>Click <strong>▢</strong> in the top bar to start listening to a meeting</li><li>Type a question and press <span class="kbd">↵</span></li></ul>Reopen this guide anytime by clicking the <strong>cue logo</strong>. Quit with <span class="kbd">⌘</span><span class="kbd">⇧</span><span class="kbd">X</span>.'
+      title: 'You\'re all set',
+      body: 'How to use Socrates:<ul><li><span class="kbd">Ctrl</span> <span class="kbd">↵</span> — <strong>Explain</strong> what\'s on screen or being said</li><li><span class="kbd">Ctrl</span> <span class="kbd">H</span> — a <strong>nudge</strong> when you\'re stuck (never the full answer)</li><li>Click <strong>▢</strong> in the top bar to start listening</li><li>Type a question and press <span class="kbd">↵</span></li></ul>The overlay is hidden from the taskbar — reach it any time from the <strong>tray icon</strong> (show / hide / quit). Reopen this guide from the <strong>logo</strong>. Quit with <span class="kbd">Ctrl</span><span class="kbd">⇧</span><span class="kbd">X</span>.'
     }
   ];
   let obIndex = 0;
@@ -359,7 +384,7 @@
   function showOnboard() { obIndex = 0; renderOnboard(); obScrim.classList.remove('hidden'); setIgnore(false); }
   async function finishOnboard() {
     obScrim.classList.add('hidden');
-    if (settings && !settings.onboarded) { settings.onboarded = true; await cue.settingsSet({ onboarded: true }); }
+    if (settings && !settings.onboarded) { settings.onboarded = true; await sx.settingsSet({ onboarded: true }); }
   }
   $('#ob-next').addEventListener('click', () => { if (obIndex === OB_STEPS.length - 1) finishOnboard(); else { obIndex++; renderOnboard(); } });
   $('#ob-back').addEventListener('click', () => { if (obIndex > 0) { obIndex--; renderOnboard(); } });
@@ -368,11 +393,13 @@
 
   // ---- boot --------------------------------------------------------------
   (async function boot() {
-    settings = await cue.settingsGet();
+    settings = await sx.settingsGet();
+    if (!['learning', 'teaching'].includes(settings.role)) settings.role = 'learning';
     smartBtn.classList.toggle('on', !!settings.smart);
+    applyRole(settings.role);
     showExample();
     syncPlaceholder();
-    const st = await cue.captureState();
+    const st = await sx.captureState();
     $('#live-dot').classList.toggle('off', !st.active);
     $('#stop-btn').classList.toggle('active', st.active);
     if (!settings.onboarded) showOnboard();

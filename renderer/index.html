@@ -3,14 +3,19 @@
 <head>
   <meta charset="utf-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:;" />
-  <title>cue</title>
+  <title>Socrates</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div id="app">
     <!-- Top-center floating pill toolbar (drag handle) -->
     <div id="toolbar">
-      <button class="tb-logo" id="logo-btn" title="cue"></button>
+      <button class="tb-logo" id="logo-btn" title="Socrates"></button>
+      <div class="tb-divider"></div>
+      <div id="role-seg" class="tb-role" title="Learning vs. teaching — swaps the whole prompt set">
+        <button data-role="learning" class="on">Learn</button>
+        <button data-role="teaching">Teach</button>
+      </div>
       <div class="tb-divider"></div>
       <button class="tb-hide" id="hide-btn"><span class="chev"></span><span>Hide</span></button>
       <div class="tb-divider"></div>
@@ -24,18 +29,18 @@
         <div id="messages"></div>
 
         <div id="action-row">
-          <button class="act" data-mode="assist"><span class="ic"></span><span>Assist</span></button>
+          <button class="act" data-mode="explain"><span class="ic"></span><span class="lbl">Explain</span></button>
           <span class="sep">•</span>
-          <button class="act" data-mode="say"><span class="ic"></span><span>What should I say?</span></button>
+          <button class="act" data-mode="hint"><span class="ic"></span><span class="lbl">Nudge me</span></button>
           <span class="sep">•</span>
-          <button class="act" data-mode="followup"><span class="ic"></span><span>Follow-up questions</span></button>
+          <button class="act" data-mode="check"><span class="ic"></span><span class="lbl">Check understanding</span></button>
           <span class="sep">•</span>
-          <button class="act" data-mode="recap"><span class="ic"></span><span>Recap</span></button>
+          <button class="act" data-mode="recap"><span class="ic"></span><span class="lbl">Recap</span></button>
         </div>
 
         <div id="composer">
           <div id="input-area">
-            <div id="placeholder">Ask about your screen or conversation, or <span class="keycap">⌘</span><span class="keycap">⏎</span> for Assist</div>
+            <div id="placeholder">Ask about your screen or session, or <span class="keycap">Ctrl</span><span class="keycap">⏎</span> to Explain</div>
             <textarea id="input" rows="1" spellcheck="false"></textarea>
           </div>
           <div id="composer-bottom">
@@ -64,7 +69,7 @@
           <button data-provider="gemini">Gemini</button>
         </div>
 
-        <label class="s-label">API keys <span class="s-hint">stored locally in cue-data.json</span></label>
+        <label class="s-label">API keys <span class="s-hint">stored locally in socrates-data.json</span></label>
         <div class="s-field"><span>OpenAI</span><input id="key-openai" type="password" placeholder="sk-..." autocomplete="off" /></div>
         <div class="s-field"><span>Anthropic</span><input id="key-anthropic" type="password" placeholder="sk-ant-..." autocomplete="off" /></div>
         <div class="s-field"><span>Gemini</span><input id="key-gemini" type="password" placeholder="AIza..." autocomplete="off" /></div>

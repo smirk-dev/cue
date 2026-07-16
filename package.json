@@ -1,25 +1,41 @@
 {
-  "name": "cue",
+  "name": "socrates",
   "version": "0.1.0",
-  "description": "Open-source macOS invisible AI overlay — three separate inputs (screen, mic, system audio) into an LLM. A Cluely-style copilot for meetings and coding problems.",
+  "description": "Open-source Windows teaching-and-learning copilot — a private overlay that sees your screen, hears your session, and helps on both sides of it: the person explaining and the person trying to understand.",
   "license": "GPL-3.0-or-later",
-  "author": "cue",
+  "author": "Socrates",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "icons": "node build/make-icons.js",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder --mac zip"
+    "dist": "electron-builder --win nsis"
   },
   "build": {
-    "appId": "com.cue.overlay",
-    "productName": "cue",
+    "appId": "com.socrates.overlay",
+    "productName": "Socrates",
     "asar": false,
     "files": [
       "main.js",
       "preload.js",
       "src/**/*",
-      "renderer/**/*"
+      "renderer/**/*",
+      "build/tray.png"
     ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Socrates"
+    },
     "mac": {
       "target": [
         "dir"
@@ -30,9 +46,9 @@
       "identity": null,
       "extendInfo": {
         "LSUIElement": true,
-        "NSMicrophoneUsageDescription": "cue transcribes your microphone so it can help you in conversations.",
-        "NSCameraUsageDescription": "cue does not use the camera.",
-        "NSAudioCaptureUsageDescription": "cue captures system audio to transcribe the other participant in a call."
+        "NSMicrophoneUsageDescription": "Socrates transcribes your microphone so it can help you in a live session.",
+        "NSCameraUsageDescription": "Socrates does not use the camera.",
+        "NSAudioCaptureUsageDescription": "Socrates captures system audio to transcribe the other participant in a session."
       }
     }
   },
@@ -40,9 +56,10 @@
     "electron",
     "overlay",
     "ai",
-    "assistant",
-    "screencapturekit",
-    "macos"
+    "tutor",
+    "teaching",
+    "learning",
+    "windows"
   ],
   "devDependencies": {
     "electron": "33.2.1",
